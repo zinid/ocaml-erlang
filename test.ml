@@ -1,12 +1,16 @@
 let p2 () =
-  let _ = Erl.receive () in ()
+  match Erl.receive () with
+    | `Ping pid ->
+      Erl.send pid `Pong
 
 let p1 () =
   let p = Erl.spawn p2 in
-  let _ = Erl.monitor p in
-  let _ = Erl.send p (`Ping 1) in
-  match Erl.receive ~timeout:1.0 () with
-    | _ -> ()
+  let _ = Erl.send p (`Ping (Erl.self () )) in
+  match Erl.receive () with
+    | exception Erl.Timeout ->
+      ()
+    | `Pong ->
+      ()
 
 let _ =
   let _ = Erl.spawn p1 in

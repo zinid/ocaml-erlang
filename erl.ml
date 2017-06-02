@@ -5,7 +5,7 @@ module PidSet = Set.Make (
     let compare = Pervasives.compare
     type t = pid
   end)
-type msg = [`DOWN of pid | `Ping of int]
+type msg = [`DOWN of pid | `Ping of pid | `Pong]
 type msg_wrapper = Msg of msg | Timeout
 type proc =
     {id : int;
