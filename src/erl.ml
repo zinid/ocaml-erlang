@@ -6,11 +6,12 @@ module PidSet = Set.Make (
     type t = pid
   end)
 type msg = [`DOWN of pid | `Ping of pid | `Pong]
-type msg_wrapper = Msg of msg | Timeout
+type msg_or_timeout = Msg of msg | Timeout
 type proc =
     {id : int;
-     mbox : (pid * msg_wrapper) Queue.t;
+     mbox : (pid * msg_or_timeout) Queue.t;
      prompt : unit Delimcc.prompt;
+     mutable name : string option;
      mutable recv_from : pid option;
      mutable timer : unit ref;
      mutable monitored_by : PidSet.t;
@@ -20,7 +21,8 @@ let max_pid = ref 0
 let running_pid = ref 0
 let run_q = Queue.create ()
 let timer_q = ref []
-let max_procs = 65536
+let max_procs = 655360
+let named_procs : (string, pid) Hashtbl.t = Hashtbl.create 10
 let proc_table : proc option array = Array.make max_procs None
 let infinity = max_float
 
@@ -36,12 +38,21 @@ let is_process_alive pid =
     | Some _ -> true
     | None -> false
 
+let processes () =
+  Array.fold_right
+    (fun v acc ->
+      match v with
+	| None -> acc
+	| Some proc -> proc.id::acc
+    ) proc_table []
+
 let init_proc () =
   incr max_pid;
   let proc = {id = !max_pid;
 	      prompt = Delimcc.new_prompt ();
 	      timer = make_ref ();
 	      recv_from = None;
+	      name = None;
 	      mbox = Queue.create ();
 	      monitored_by = PidSet.empty;
 	      stack = None} in
@@ -54,19 +65,32 @@ let spawn f =
   Queue.push (proc.id, stack) run_q;
   proc.id
 
+let whereis name =
+  Hashtbl.find named_procs name
+
 let send pid msg =
   let msg' = msg in
   match pid_to_proc pid with
     | None ->
       false
     | Some ({stack = None} as proc) ->
+      (* some task is already put in the run queue, 
+	 but not dispatched yet *)
       Queue.push (self (), Msg msg') proc.mbox;
       true
     | Some ({stack = Some resume_stack;
 	     recv_from = from} as proc) ->
+      proc.stack <- None;
       Queue.push (self (), Msg msg') proc.mbox;
       Queue.push (pid, resume_stack) run_q;
       true
+
+let send_by_name name msg =
+  match whereis name with
+    | exception Not_found ->
+      false
+    | pid ->
+      send pid msg
 
 let monitor pid =
   match pid_to_proc pid with
@@ -82,9 +106,31 @@ let demonitor pid =
     | None ->
       ()
 
+let register name pid =
+  match pid_to_proc pid with
+    | Some proc ->
+      proc.name <- Some name;
+      Hashtbl.replace named_procs name pid
+    | None ->
+      ()
+
+let unregister name =
+  let pid = Hashtbl.find named_procs name in
+  Hashtbl.remove named_procs name;
+  match pid_to_proc pid with
+    | Some proc ->
+      proc.name <- None
+    | None ->
+      ()
+
 let destroy_proc proc =
   PidSet.iter (fun pid -> ignore (send pid (`DOWN proc.id))) proc.monitored_by;
-  proc_table.(proc.id) <- None
+  proc_table.(proc.id) <- None;
+  match proc.name with
+    | Some name ->
+      Hashtbl.remove named_procs name
+    | None ->
+      ()
 
 let rec insert_timer timer timers acc =
   match timers with

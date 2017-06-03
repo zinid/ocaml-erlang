@@ -1,0 +1,14 @@
+OASISFormat: 0.4
+Name:        ocaml-erlang
+Version:     0.1.0
+Synopsis:    Implementation of some Erlang primitives in OCaml
+Authors:     xramtsov@gmail.com
+License:     Apache-2.0
+Plugins:     DevFiles (0.4)
+
+Executable test
+  Path:       src
+  BuildTools: ocamlbuild
+  MainIs:     test.ml
+  CompiledObject: native
+  BuildDepends: delimcc, unix
