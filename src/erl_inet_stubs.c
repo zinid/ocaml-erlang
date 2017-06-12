@@ -368,7 +368,7 @@ static int sock_open() {
 }
 
 value raise_sock_error(int err) {
-  caml_raise_with_arg(*caml_named_value("sock_error"), Int_val(err));
+  caml_raise_with_arg(*caml_named_value("sock_error"), Val_int(err));
   return Val_unit;
 }
 
