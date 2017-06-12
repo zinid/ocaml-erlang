@@ -10,7 +10,7 @@ let rec p1_loop () =
       Printf.printf
 	"got error: %s (%d)\n%!"
 	(Erl_inet.strerror errno) errno;
-      exit 0
+      p1_loop ()
     | _ ->
       p1_loop ()
 
