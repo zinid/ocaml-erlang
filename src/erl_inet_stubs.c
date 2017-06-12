@@ -14,6 +14,7 @@
 #include <errno.h>
 #include <assert.h>
 #include <pthread.h>
+#include <string.h>
 
 #define RECV_BUF_SIZE 1048576
 #define MAX_FD_NUMBER 1024
