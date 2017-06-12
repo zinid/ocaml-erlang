@@ -1,33 +1,26 @@
-let p2 () =
+let rec p1_loop () =
   match Erl.receive () with
+    | `Sock_data (sock, data) ->
+      Erl_inet.send sock data;
+      p1_loop ()
+    | `Sock_accept sock ->
+      Printf.printf "accepted on %d\n%!" sock;
+      p1_loop ()
+    | `Sock_error (sock, errno) ->
+      Printf.printf
+	"got error: %s (%d)\n%!"
+	(Erl_inet.strerror errno) errno;
+      exit 0
     | _ ->
-      ()
-
-let rec p1_loop = function
-  | 0 ->
-    print_endline "got all processes DOWN"
-  | n ->
-    begin match Erl.receive () with
-      | _ ->
-	()
-    end;
-    p1_loop (n-1)
+      p1_loop ()
 
 let p1 () =
-  let max = 100000 in
-  for i=1 to max do
-    let p = Erl.spawn p2 in
-    let name = string_of_int i in
-    let _ = Erl.monitor p in
-    let _ = Erl.register name p in
-    ignore (Erl.send_by_name name (`Ping (Erl.self ())))
-  done;
-  p1_loop max
+  match Erl_inet.listen (Erl.self()) "0.0.0.0" 5222 5 with
+    | exception (Erl_inet.Sock_error errno) ->
+      Printf.printf "failed to listen: %s\n%!" (Erl_inet.strerror errno)
+    | _ ->
+      p1_loop ()
 
 let _ =
   let _ = Erl.spawn p1 in
-  Erl.schedule ();
-  Printf.printf "run_q = %d\n" (Queue.length Erl.run_q);
-  Printf.printf "timer_q = %d\n" (List.length !Erl.timer_q);
-  Printf.printf "named_procs = %d\n" (Hashtbl.length Erl.named_procs);
-  Printf.printf "proc_table = %d\n" (List.length (Erl.processes ()))
+  Erl.run ()

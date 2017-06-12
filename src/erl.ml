@@ -5,33 +5,46 @@ module PidSet = Set.Make (
     let compare = Pervasives.compare
     type t = pid
   end)
-type msg = [`DOWN of pid | `Ping of pid | `Pong]
+type msg = [`DOWN of pid
+	   | `Ping of pid
+	   | `Pong
+	   | `Sock_data of Erl_inet.socket * string
+	   | `Sock_accept of Erl_inet.socket
+	   | `Sock_error of Erl_inet.socket * int]
+
 type msg_or_timeout = Msg of msg | Timeout
 type proc =
     {id : int;
      mbox : (pid * msg_or_timeout) Queue.t;
-     prompt : unit Delimcc.prompt;
      mutable name : string option;
      mutable recv_from : pid option;
      mutable timer : unit ref;
      mutable monitored_by : PidSet.t;
      mutable stack : (unit -> unit) option}
 
-let max_pid = ref 0
+let last_pid = ref 0
 let running_pid = ref 0
 let run_q = Queue.create ()
 let timer_q = ref []
-let max_procs = 655360
 let named_procs : (string, pid) Hashtbl.t = Hashtbl.create 10
-let proc_table : proc option array = Array.make max_procs None
+let proc_table : proc option array ref = ref (Array.make 1024 None)
 let infinity = max_float
+let prompt = Delimcc.new_prompt ()
+
+let next_pid () =
+  incr last_pid;
+  if !last_pid >= Array.length !proc_table then (
+    let arr = Array.make (Array.length !proc_table) None in
+    proc_table := Array.append !proc_table arr
+  );
+  !last_pid
 
 let self () = !running_pid
 
 let make_ref () = ref ()
 
 let pid_to_proc pid =
-  proc_table.(pid)
+  !proc_table.(pid)
 
 let is_process_alive pid =
   match pid_to_proc pid with
@@ -44,24 +57,23 @@ let processes () =
       match v with
 	| None -> acc
 	| Some proc -> proc.id::acc
-    ) proc_table []
+    ) !proc_table []
 
 let init_proc () =
-  incr max_pid;
-  let proc = {id = !max_pid;
-	      prompt = Delimcc.new_prompt ();
+  let pid = next_pid () in
+  let proc = {id = pid;
 	      timer = make_ref ();
 	      recv_from = None;
 	      name = None;
 	      mbox = Queue.create ();
 	      monitored_by = PidSet.empty;
 	      stack = None} in
-  proc_table.(!max_pid) <- Some proc;
+  !proc_table.(pid) <- Some proc;
   proc
 
 let spawn f =
   let proc = init_proc () in
-  let stack () = Delimcc.push_prompt proc.prompt (fun () -> ignore (f ())) in
+  let stack () = Delimcc.push_prompt prompt (fun () -> ignore (f ())) in
   Queue.push (proc.id, stack) run_q;
   proc.id
 
@@ -75,7 +87,7 @@ let send pid msg =
       false
     | Some ({stack = None} as proc) ->
       (* some task is already put in the run queue, 
-	 but not dispatched yet *)
+	 but is not dispatched yet *)
       Queue.push (self (), Msg msg') proc.mbox;
       true
     | Some ({stack = Some resume_stack;
@@ -125,7 +137,7 @@ let unregister name =
 
 let destroy_proc proc =
   PidSet.iter (fun pid -> ignore (send pid (`DOWN proc.id))) proc.monitored_by;
-  proc_table.(proc.id) <- None;
+  !proc_table.(proc.id) <- None;
   match proc.name with
     | Some name ->
       Hashtbl.remove named_procs name
@@ -152,7 +164,7 @@ let wait_for_msg proc timeout =
     | true when timeout > 0.0 ->
       if timeout <> infinity then
 	set_timeout proc timeout;
-      Delimcc.shift0 proc.prompt (fun stack -> proc.stack <- Some stack)
+      Delimcc.shift0 prompt (fun stack -> proc.stack <- Some stack)
     | true ->
       raise Timeout
     | false ->
@@ -171,33 +183,43 @@ let receive ?timeout:(timeout = infinity) () =
     | None ->
       assert false
 
-let process_task () =
-  match Queue.pop run_q with
+let rec process_run_q' q =
+  match Queue.pop q with
     | exception Queue.Empty ->
       ()
     | (pid, task) ->
-      match pid_to_proc pid with
-	| Some proc ->
-	  running_pid := pid;
-	  begin
-	    match task () with
-	      | exception exn ->
-		let reason = Printexc.to_string exn in
-		Printf.printf
-		  "process %d terminated with exception: %s\n%!"
-		  pid reason;
-		destroy_proc proc
-	      | _ ->
-		begin
-		  match proc.stack with
-		    | None ->
-		      destroy_proc proc
-		    | Some _ ->
-		      ()
-		end
-	  end
-	| None ->
-	  ()
+      begin
+	match pid_to_proc pid with
+	  | Some proc ->
+	    running_pid := pid;
+	    begin
+	      match task () with
+		| exception exn ->
+		  let reason = Printexc.to_string exn in
+		  Printf.printf
+		    "process %d terminated with exception: %s\n%!"
+		    pid reason;
+		  destroy_proc proc
+		| _ ->
+		  begin
+		    match proc.stack with
+		      | None ->
+			destroy_proc proc
+		      | Some _ ->
+			()
+		  end
+	    end
+	  | None ->
+	    ()
+      end;
+      process_run_q' q
+
+let process_run_q () =
+  if not (Queue.is_empty run_q) then (
+    let q = Queue.create () in
+    let _ = Queue.transfer run_q q in
+    process_run_q' q
+  )
 
 let rec process_timers () =
   let cur_time = Unix.gettimeofday () in
@@ -217,18 +239,37 @@ let rec process_timers () =
       process_timers ()
     | (fire_time, pid, _)::timers when Queue.is_empty run_q ->
       if (is_process_alive pid) then (
-	Unix.sleepf (fire_time -. cur_time)
+	fire_time -. cur_time
       ) else (
-	timer_q := timers
-      );
-      process_timers ()
+	timer_q := timers;
+	process_timers ()
+      )
     | _ ->
-      ()
+      0.0
+
+let process_io timeout =
+  let _ = Erl_inet.wait timeout in
+  let q = Erl_inet.queue_transfer () in
+  let len = Erl_inet.queue_len q in
+  for i=0 to (len-1) do (
+    match Erl_inet.queue_get q i with
+      | 0, sock, pid, data ->
+	if (data <> "") then (
+	  ignore (send pid (`Sock_data (sock, data)));
+	) else (
+	  ignore (send pid (`Sock_accept sock))
+	)
+      | err, sock, pid, _ ->
+	ignore (send pid (`Sock_error (sock, err)))
+  ) done;
+  Erl_inet.queue_free q
 
 let rec schedule () =
-  let _ = process_task () in
-  let _ = process_timers () in
-  if (Queue.is_empty run_q) then (
-    print_endline "Fatal error: nothing to schedule"
-  ) else
-    schedule ()
+  let _ = process_run_q () in
+  let sleep_timeout = process_timers () in
+  let _ = process_io sleep_timeout in
+  schedule ()
+
+let run () =
+  let _ = Erl_inet.init () in
+  schedule ()

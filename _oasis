@@ -12,3 +12,5 @@ Executable test
   MainIs:     test.ml
   CompiledObject: native
   BuildDepends: delimcc, unix
+  CSources: queue_stubs.c, erl_inet_stubs.c
+  CCLib: -lpthread -lev
