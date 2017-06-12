@@ -1,26 +1,32 @@
-let rec p1_loop () =
+let port = ref 5221
+
+let rec loop () =
   match Erl.receive () with
     | `Sock_data (sock, data) ->
-      Erl_inet.send sock data;
-      p1_loop ()
+      Erl_inet.activate sock;
+      loop ()
     | `Sock_accept sock ->
       Printf.printf "accepted on %d\n%!" sock;
-      p1_loop ()
+      Erl_inet.activate sock;
+      loop ()
     | `Sock_error (sock, errno) ->
       Printf.printf
 	"got error: %s (%d)\n%!"
 	(Erl_inet.strerror errno) errno;
-      p1_loop ()
+      loop ()
     | _ ->
-      p1_loop ()
+      loop ()
 
-let p1 () =
-  match Erl_inet.listen (Erl.self()) "0.0.0.0" 5222 5 with
+let p () =
+  incr port;
+  match Erl_inet.listen (Erl.self()) "0.0.0.0" !port 5 with
     | exception (Erl_inet.Sock_error errno) ->
       Printf.printf "failed to listen: %s\n%!" (Erl_inet.strerror errno)
     | _ ->
-      p1_loop ()
+      loop ()
 
 let _ =
-  let _ = Erl.spawn p1 in
+  for i=1 to 4 do (
+    ignore (Erl.spawn p)
+  ) done;
   Erl.run ()

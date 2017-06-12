@@ -6,6 +6,7 @@ exception Sock_error of int
 external connect : pid -> string -> int -> socket = "ml_connect"
 external listen : pid -> string -> int -> int -> socket = "ml_listen"
 external send : socket -> string -> unit = "ml_send"
+external activate : socket -> unit = "ml_activate"
 external start : unit -> unit = "ml_start"
 external close : socket -> unit = "ml_close"
 external strerror : int -> string = "ml_strerror"

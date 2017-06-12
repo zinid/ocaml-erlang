@@ -187,7 +187,6 @@ static void handle_connect(struct ev_loop *loop, ev_io *w, int revents) {
   if (errno) {
     handle_error(state, loop, -1);
   } else {
-    ev_io_start(loop, state->read_w);
     ev_set_cb(state->write_w, handle_write);
     if (!state->obuf_size)
       ev_io_stop(loop, w);
@@ -236,7 +235,6 @@ static void process_accept(struct ev_loop *loop, socket_state *state, command *c
     state = init_state(cmd->pid, cmd->fd);
     ev_io_init(state->read_w, handle_read, cmd->fd, EV_READ);
     ev_io_init(state->write_w, handle_write, cmd->fd, EV_WRITE);
-    ev_io_start(loop, state->read_w);
     command c = {.pid = cmd->pid,
 		 .fd = cmd->fd,
 		 .cmd = CMD_ACCEPT,
@@ -492,6 +490,18 @@ value ml_send(value fd_v, value data) {
   return Val_unit;
 }
 
+value ml_activate(value fd_v) {
+  int fd = Int_val(fd_v);
+  command cmd = {.pid = 0,
+		 .fd = fd,
+		 .cmd = CMD_ACTIVATE,
+		 .err = 0,
+		 .buf = NULL,
+		 .buf_size = 0};
+  send_command(fd, &cmd);
+  return Val_unit;
+}
+
 value ml_queue_transfer(value v) {
   void *q = queue_transfer(recv_q);
   return Val_long(q);
@@ -517,15 +527,6 @@ value ml_queue_get(value v1, value v2) {
   data = caml_alloc_string(cmd->buf_size);
   memcpy(String_val(data), cmd->buf, cmd->buf_size);
   free(cmd->buf);
-  if (!cmd->err) {
-    command c = {.pid = 0,
-		 .fd = cmd->fd,
-		 .cmd = CMD_ACTIVATE,
-		 .err = 0,
-		 .buf = NULL,
-		 .buf_size = 0};
-    send_command(cmd->fd, &c);
-  }
   result = alloc_tuple(4);
   Store_field(result, 0, Val_int(cmd->err));
   Store_field(result, 1, Val_int(cmd->fd));
