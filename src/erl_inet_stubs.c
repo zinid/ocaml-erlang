@@ -16,7 +16,7 @@
 #include <pthread.h>
 #include <string.h>
 
-#define RECV_BUF_SIZE 1048576
+#define RECV_BUF_SIZE 65536
 #define MAX_FD_NUMBER 1024
 
 enum {
