@@ -4,6 +4,7 @@ let rec loop () =
   match Erl.receive () with
     | `Sock_data (sock, data) ->
       Erl_inet.activate sock;
+      Erl_inet.send sock data;
       loop ()
     | `Sock_accept sock ->
       Printf.printf "accepted on %d\n%!" sock;
