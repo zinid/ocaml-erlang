@@ -18,8 +18,11 @@
 
 #define RECV_BUF_SIZE 65536
 #define MAX_FD_NUMBER 1024
-/* TODO: This currently works in linux only */
+#ifdef MSG_NOSIGNAL
 #define SEND_FLAGS MSG_NOSIGNAL
+#else
+#define SEND_FLAGS 0
+#endif
 
 enum {
   CMD_CONNECT,
@@ -361,9 +364,13 @@ static int sock_open() {
   int fd = socket(AF_INET, SOCK_STREAM, 0);
   if (fd != -1) {
     int res = fcntl(fd, F_SETFL, O_NONBLOCK);
-    if (res != -1)
+    if (res != -1) {
+#ifdef SO_NOSIGPIPE
+      int set = 1;
+      setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, (void *)&set, sizeof(int));
+#endif
       return fd;
-    else
+    } else
       close(fd);
   }
   return -1;
