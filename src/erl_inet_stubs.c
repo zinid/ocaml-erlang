@@ -18,6 +18,8 @@
 
 #define RECV_BUF_SIZE 65536
 #define MAX_FD_NUMBER 1024
+/* TODO: This currently works in linux only */
+#define SEND_FLAGS MSG_NOSIGNAL
 
 enum {
   CMD_CONNECT,
@@ -161,7 +163,7 @@ static void handle_write(struct ev_loop *loop, ev_io *w, int revents) {
   socket_state *state = lookup_state(w->fd);
   assert(state);
   if (state->obuf_size) {
-    ssize_t sent = write(w->fd, state->obuf, state->obuf_size);
+    ssize_t sent = send(w->fd, state->obuf, state->obuf_size, SEND_FLAGS);
     if (sent >= state->obuf_size) {
       free(state->obuf);
       state->obuf_size = 0;
@@ -249,7 +251,7 @@ static void process_accept(struct ev_loop *loop, socket_state *state, command *c
 static void process_send(struct ev_loop *loop, socket_state *state, command *cmd) {
   if (state) {
     if (!state->obuf_size) {
-      ssize_t sent = write(cmd->fd, cmd->buf, cmd->buf_size);
+      ssize_t sent = send(cmd->fd, cmd->buf, cmd->buf_size, SEND_FLAGS);
       if (sent >= cmd->buf_size) {
 	free(cmd->buf);
       } else if (sent > 0) {
@@ -373,7 +375,6 @@ value raise_sock_error(int err) {
 }
 
 value ml_start(value v) {
-  signal(SIGPIPE, SIG_IGN);
   num_of_cpus = sysconf(_SC_NPROCESSORS_ONLN);
   assert(num_of_cpus > 0);
   recv_q = queue_new(sizeof(command));
