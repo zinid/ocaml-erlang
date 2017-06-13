@@ -3,12 +3,12 @@ let port = ref 5221
 let rec loop () =
   match Erl.receive () with
     | `Sock_data (sock, data) ->
-      Erl_inet.activate sock;
-      Erl_inet.send sock data;
+      Erl_tcp.activate sock;
+      Erl_tcp.send sock data;
       loop ()
     | `Sock_accept sock ->
       Printf.printf "accepted on %d\n%!" sock;
-      Erl_inet.activate sock;
+      Erl_tcp.activate sock;
       loop ()
     | `Sock_error (sock, errno) ->
       Printf.printf
@@ -20,7 +20,7 @@ let rec loop () =
 
 let p () =
   incr port;
-  match Erl_inet.listen (Erl.self()) "0.0.0.0" !port 5 with
+  match Erl_tcp.listen "0.0.0.0" !port with
     | exception (Erl_inet.Sock_error errno) ->
       Printf.printf "failed to listen: %s\n%!" (Erl_inet.strerror errno)
     | _ ->
