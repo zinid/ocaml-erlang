@@ -384,6 +384,8 @@ value raise_sock_error(int err) {
 value ml_start(value v) {
   num_of_cpus = sysconf(_SC_NPROCESSORS_ONLN);
   assert(num_of_cpus > 0);
+  if (num_of_cpus > 1)
+    num_of_cpus -= 1;
   recv_q = queue_new(sizeof(command));
   pthread_mutex_t lock;
   pthread_cond_t done;
