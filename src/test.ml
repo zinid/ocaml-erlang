@@ -38,7 +38,6 @@ let rec recv_loop () =
       Printf.printf
 	"got error: %s (%d)\n%!"
 	(Erl_inet.strerror errno) errno;
-      exit 0;
       recv_loop ()
     | _ ->
       recv_loop ()
