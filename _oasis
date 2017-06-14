@@ -14,4 +14,4 @@ Executable test
   BuildDepends: delimcc, unix
   CSources: queue_stubs.c, erl_inet_stubs.c
   CCLib: -lpthread -lev
-  Nativeopt: -verbose -p -ccopt -pg
+#  Nativeopt: -verbose -p -ccopt -pg
