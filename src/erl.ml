@@ -283,15 +283,15 @@ let rec process_timers () =
 	    ()
       end;
       process_timers ()
-    | (fire_time, pid, _)::timers when Queue.is_empty run_q ->
+    | (fire_time, pid, _)::timers ->
       if (is_process_alive pid) then (
 	fire_time -. cur_time
       ) else (
 	timer_q := timers;
 	process_timers ()
       )
-    | _ ->
-      0.0
+    | [] ->
+      infinity
 
 let process_io timeout =
   let _ = Erl_inet.wait timeout in
@@ -313,8 +313,12 @@ let process_io timeout =
 
 let rec schedule () =
   let _ = process_run_q () in
-  let sleep_timeout = process_timers () in
-  let _ = process_io sleep_timeout in
+  let timeout = process_timers () in
+  let timeout' = match Queue.is_empty run_q with
+    | true -> timeout
+    | false -> 0.0
+  in
+  let _ = process_io timeout' in
   schedule ()
 
 let run () =

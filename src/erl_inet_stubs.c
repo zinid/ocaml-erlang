@@ -17,7 +17,7 @@
 #include <string.h>
 
 #define RECV_BUF_SIZE 65536
-#define MAX_FD_NUMBER 1024
+#define MAX_FD_NUMBER 10240
 #ifdef MSG_NOSIGNAL
 #define SEND_FLAGS MSG_NOSIGNAL
 #else
@@ -192,6 +192,14 @@ static void handle_connect(struct ev_loop *loop, ev_io *w, int revents) {
   if (errno) {
     handle_error(state, loop, -1);
   } else {
+    command cmd = {.pid = state->pid,
+		   .fd = w->fd,
+		   .cmd = CMD_CONNECT,
+		   .err = 0,
+		   .buf = NULL,
+		   .buf_size = 0};
+    queue_push(recv_q, &cmd);
+    ev_async_send(default_loop, &wakeup_w);
     ev_set_cb(state->write_w, handle_write);
     if (!state->obuf_size)
       ev_io_stop(loop, w);
@@ -411,11 +419,13 @@ value ml_start(value v) {
 value ml_wait(value v) {
   ev_tstamp timeout = Double_val(v);
   caml_enter_blocking_section();
+  int flags = EVRUN_NOWAIT;
   if (timeout > 0.0) {
     ev_timer_set(&timer_w, timeout, 0.0);
     ev_timer_start(default_loop, &timer_w);
+    flags = EVRUN_ONCE;
   }
-  ev_run(default_loop, EVRUN_ONCE);
+  ev_run(default_loop, flags);
   caml_leave_blocking_section();
   return Val_unit;
 }
