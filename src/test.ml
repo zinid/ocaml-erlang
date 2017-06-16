@@ -1,6 +1,6 @@
 let f = ref 0
 let port = ref 5222
-let data = String.make (64*1024) '\000'
+let data = String.make (8*1024) '\000'
 
 let rec send_loop sock =
   Erl_tcp.activate sock;
@@ -53,5 +53,12 @@ let receiver () =
       recv_loop ()
 
 let _ =
+  (*
+  let _ =
+    Gc.set { (Gc.get()) with Gc.major_heap_increment = 4000000;
+      Gc.minor_heap_size = 16000000;
+      Gc.max_overhead = 0;
+      Gc.space_overhead = 0} in
+  *)
   ignore (Erl.spawn receiver);
   Erl.run ()

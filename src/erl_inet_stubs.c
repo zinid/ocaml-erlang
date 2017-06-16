@@ -16,7 +16,7 @@
 #include <pthread.h>
 #include <string.h>
 
-#define RECV_BUF_SIZE 65536
+#define RECV_BUF_SIZE 8192
 #define MAX_FD_NUMBER 10240
 #ifdef MSG_NOSIGNAL
 #define SEND_FLAGS MSG_NOSIGNAL
