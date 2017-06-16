@@ -120,11 +120,11 @@ static socket_state *lookup_state(int fd) {
 
 static void handle_error(socket_state *state, struct ev_loop *loop, int err)
 {
+  err ? (err = errno) : (err = ECONNRESET);
   if (err == EAGAIN || err == EWOULDBLOCK || err == EINPROGRESS) {
     /* Do nothing, socket is not ready yet */
   } else {
     int fd = state->write_w->fd;
-    err ? (err = errno) : (err = ECONNRESET);
     command cmd = {.pid = state->pid,
 		   .fd = fd,
 		   .cmd = CMD_ERROR,
